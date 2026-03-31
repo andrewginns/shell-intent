@@ -10,8 +10,9 @@ $script:ShellIntentConfig = @{
 }
 
 $script:ShellIntentEnterHandlerBriefDescription = 'ShellIntent.Enter'
-$script:ShellIntentPendingCommandNamePrefix = '__shell_intent'
-$script:ShellIntentPendingCommandName = '{0}_{1}' -f $script:ShellIntentPendingCommandNamePrefix, ([guid]::NewGuid().ToString('N'))
+$script:ShellIntentLegacyPendingCommandNamePrefix = '__shell_intent'
+$script:ShellIntentPendingCommandName = 'Shell-Intent'
+$script:ShellIntentPendingCommandDisplayText = 'Shell-Intent running'
 $script:ShellIntentSavedEnterHandler = $null
 
 function Test-ShellIntentHost {
@@ -196,8 +197,10 @@ function Remove-ShellIntentPendingCommands {
     [CmdletBinding()]
     param()
 
-    Remove-Item "alias:$($script:ShellIntentPendingCommandNamePrefix)*" -ErrorAction SilentlyContinue
-    Remove-Item "function:$($script:ShellIntentPendingCommandNamePrefix)*" -ErrorAction SilentlyContinue
+    Remove-Item "alias:$($script:ShellIntentLegacyPendingCommandNamePrefix)*" -ErrorAction SilentlyContinue
+    Remove-Item "function:$($script:ShellIntentLegacyPendingCommandNamePrefix)*" -ErrorAction SilentlyContinue
+    Remove-Item "alias:$($script:ShellIntentPendingCommandName)" -ErrorAction SilentlyContinue
+    Remove-Item "function:$($script:ShellIntentPendingCommandName)" -ErrorAction SilentlyContinue
 }
 
 function Resolve-ShellIntentCommandInfo {
@@ -407,6 +410,129 @@ function Resolve-ShellIntentCodexInvocation {
     }
 
     return $commandPath
+}
+
+function ConvertTo-ShellIntentWindowsCommandLineArgument {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    if ($null -eq $Value -or $Value.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $builder = New-Object System.Text.StringBuilder
+    $null = $builder.Append('"')
+    $backslash = [char] 92
+    $backslashCount = 0
+
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq $backslash) {
+            $backslashCount++
+            continue
+        }
+
+        if ($character -eq '"') {
+            $null = $builder.Append($backslash, ($backslashCount * 2) + 1)
+            $null = $builder.Append('"')
+            $backslashCount = 0
+            continue
+        }
+
+        if ($backslashCount -gt 0) {
+            $null = $builder.Append($backslash, $backslashCount)
+            $backslashCount = 0
+        }
+
+        $null = $builder.Append($character)
+    }
+
+    if ($backslashCount -gt 0) {
+        $null = $builder.Append($backslash, $backslashCount * 2)
+    }
+
+    $null = $builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-ShellIntentNativeProcess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FilePath,
+
+        [string[]] $ArgumentList = @(),
+
+        [AllowEmptyString()]
+        [string] $StandardInput = ''
+    )
+
+    $processStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $processStartInfo.UseShellExecute = $false
+    $processStartInfo.RedirectStandardInput = $true
+    $processStartInfo.RedirectStandardOutput = $true
+    $processStartInfo.RedirectStandardError = $true
+
+    $quotedArguments = @(
+        $ArgumentList | ForEach-Object {
+            ConvertTo-ShellIntentWindowsCommandLineArgument -Value ([string] $_)
+        }
+    )
+
+    $extension = [System.IO.Path]::GetExtension($FilePath)
+    if (
+        $extension.Equals('.cmd', [System.StringComparison]::OrdinalIgnoreCase) -or
+        $extension.Equals('.bat', [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        $processStartInfo.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
+        $commandLine = @(
+            ConvertTo-ShellIntentWindowsCommandLineArgument -Value $FilePath
+            $quotedArguments
+        ) -join ' '
+        $processStartInfo.Arguments = '/d /s /c "' + $commandLine + '"'
+    } else {
+        $processStartInfo.FileName = $FilePath
+        $processStartInfo.Arguments = $quotedArguments -join ' '
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $processStartInfo
+    $processStarted = $false
+
+    try {
+        $processStarted = $process.Start()
+        if (-not $processStarted) {
+            throw "Failed to start '$FilePath'."
+        }
+
+        $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+        $standardErrorTask = $process.StandardError.ReadToEndAsync()
+
+        if ($null -ne $StandardInput) {
+            $process.StandardInput.Write($StandardInput)
+        }
+
+        $process.StandardInput.Close()
+        $process.WaitForExit()
+
+        return @{
+            ExitCode = $process.ExitCode
+            StandardOutput = $standardOutputTask.GetAwaiter().GetResult()
+            StandardError = $standardErrorTask.GetAwaiter().GetResult()
+        }
+    } finally {
+        if ($processStarted -and -not $process.HasExited) {
+            $process.Kill()
+        }
+
+        $process.Dispose()
+    }
 }
 
 function Test-ShellIntentHasParameter {
@@ -830,8 +956,8 @@ $trimmedQuery
         '-'
     )
 
-    $null = $codexPrompt | & $codexInvocation @codexArgs *> $null
-    $exitCode = $LASTEXITCODE
+    $codexResult = Invoke-ShellIntentNativeProcess -FilePath $codexInvocation -ArgumentList $codexArgs -StandardInput $codexPrompt
+    $exitCode = $codexResult.ExitCode
 
     if (Test-Path -LiteralPath $outputPath) {
         return Get-Content -LiteralPath $outputPath -Raw -Encoding UTF8
@@ -868,7 +994,10 @@ function Register-ShellIntentPendingCommand {
 
     $functionDefinition = {
         [CmdletBinding()]
-        param()
+        param(
+            [Parameter(ValueFromRemainingArguments = $true)]
+            [object[]] $IgnoredArguments
+        )
 
         $query = $global:ShellIntentPendingQuery
         Remove-Variable -Scope Global -Name ShellIntentPendingQuery -ErrorAction SilentlyContinue
@@ -939,7 +1068,7 @@ function Enable-ShellIntent {
                     [Microsoft.PowerShell.PSConsoleReadLine]::AddToHistory($line)
                     $global:ShellIntentPendingQuery = $line
                     [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($script:ShellIntentPendingCommandName)
+                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($script:ShellIntentPendingCommandDisplayText)
                     [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine($key, $arg)
                     break
                 }

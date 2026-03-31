@@ -583,10 +583,11 @@ Describe 'ShellIntent PSReadLine lifecycle' {
 
         $pendingCommandName = Get-ShellIntentPendingCommandName
 
+        $pendingCommandName | Should Be 'Shell-Intent'
         (Get-Command $pendingCommandName).CommandType | Should Be 'Function'
 
         $global:ShellIntentPendingQuery = '?demo'
-        (& $pendingCommandName) | Should Match "Codex executable '__missing_codex__' was not found."
+        (& $pendingCommandName running) | Should Match "Codex executable '__missing_codex__' was not found."
 
         { Get-Variable -Scope Global -Name ShellIntentPendingQuery -ErrorAction Stop } | Should Throw
     }
@@ -700,12 +701,20 @@ Describe 'ShellIntent PSReadLine lifecycle' {
             & { . $profilePath } | Out-Null
 
             $pendingCommandsWhileEnabled = @(
+                Get-ChildItem function:Shell-Intent -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+            )
+            $legacyPendingCommandsWhileEnabled = @(
                 Get-ChildItem function:__shell_intent* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
             )
 
             $pendingCommandsWhileEnabled.Count | Should Be 1
+            $legacyPendingCommandsWhileEnabled.Count | Should Be 0
 
             Disable-ShellIntent
+
+            @(
+                Get-ChildItem function:Shell-Intent -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+            ).Count | Should Be 0
 
             @(
                 Get-ChildItem function:__shell_intent* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
@@ -742,6 +751,33 @@ Describe 'ShellIntent Codex invocation' {
             } $codexPs1Path
 
             $resolvedPath | Should Be $codexCmdPath
+        } finally {
+            Remove-Module ShellIntent -ErrorAction SilentlyContinue
+
+            if (Test-Path -LiteralPath $testRoot) {
+                Remove-Item -LiteralPath $testRoot -Recurse -Force
+            }
+        }
+    }
+
+    It 'returns a clean failure message when the Codex process writes to stderr' {
+        $testRoot = New-ShellIntentTestRoot
+
+        try {
+            $codexCmdPath = Join-Path $testRoot 'codex.cmd'
+            Set-Content -LiteralPath $codexCmdPath -Encoding Ascii -Value @'
+@echo off
+echo OpenAI Codex v0.117.0 (research preview) 1>&2
+exit /b 1
+'@
+
+            $result = & (Get-Module ShellIntent) {
+                param($path)
+                $script:ShellIntentConfig.CodexExecutable = $path
+                Invoke-ShellIntentQuery -Query '?uname -a'
+            } $codexCmdPath
+
+            $result | Should Be 'Codex query failed with exit code 1.'
         } finally {
             Remove-Module ShellIntent -ErrorAction SilentlyContinue
 

@@ -36,6 +36,8 @@ PS> ?winget grep notepad
 ## Install
 
 Open the terminal you want to use with ShellIntent, then run the matching commands there.
+Running `. .\install.ps1` with no arguments targets Warp only.
+The installer updates your PowerShell profile. To enable ShellIntent in the current session, either restart the terminal or run `. $PROFILE` after the install command.
 
 ### Warp On Windows PowerShell 5.1
 
@@ -46,27 +48,31 @@ git clone git@github.com:andrewginns/shell-intent.git
 cd shell-intent
 Set-ExecutionPolicy -Scope Process Bypass
 . .\install.ps1
+. $PROFILE
 ```
 
-### Windows Terminal On PowerShell 7
+### Windows Terminal On PowerShell 7 Or Windows PowerShell
 
-Launch a Windows Terminal tab that uses `pwsh` and run:
-
-```powershell
-git clone git@github.com:andrewginns/shell-intent.git
-cd shell-intent
-. .\install.ps1 -TerminalProcessNames @('WindowsTerminal.exe')
-```
-
-### Windows Terminal On Windows PowerShell
-
-Launch a Windows Terminal tab that uses Windows PowerShell and run:
+Launch a Windows Terminal tab that uses either `pwsh` or Windows PowerShell and run:
 
 ```powershell
 git clone git@github.com:andrewginns/shell-intent.git
 cd shell-intent
 Set-ExecutionPolicy -Scope Process Bypass
 . .\install.ps1 -TerminalProcessNames @('WindowsTerminal.exe')
+. $PROFILE
+```
+
+### VS Code Integrated Terminal
+
+Launch the VS Code integrated terminal and run:
+
+```powershell
+git clone git@github.com:andrewginns/shell-intent.git
+cd shell-intent
+Set-ExecutionPolicy -Scope Process Bypass
+. .\install.ps1 -TerminalProcessNames @('Code.exe')
+. $PROFILE
 ```
 
 ### Plain powershell.exe Or pwsh
@@ -78,13 +84,15 @@ git clone git@github.com:andrewginns/shell-intent.git
 cd shell-intent
 Set-ExecutionPolicy -Scope Process Bypass
 . .\install.ps1 -AlwaysEnable
+. $PROFILE
 ```
 
 If you downloaded the repository as a ZIP instead of cloning it, open the extracted folder in the target terminal and run the same final two commands from there.
 
 ## Manual Profile Setup
 
-If you do not want to use the installer, add this to your profile:
+If you do not want to use the installer, add this to your profile.
+Replace `warp.exe` with the terminal host you actually use, such as `WindowsTerminal.exe` or `Code.exe`, or use `-AlwaysEnable` if you want ShellIntent in every PowerShell session.
 
 ```powershell
 Import-Module ShellIntent
@@ -112,13 +120,15 @@ list files in this folder
 
 If the response contains alternatives, the final line is still one raw recommended PowerShell command.
 
-## Useful Checks
+## Troubleshooting
 
 ```powershell
 Test-ShellIntentHost
-Get-ShellIntentInputDisposition 'ls -la'
-Invoke-ShellIntentQuery '?ip a'
+Get-ShellIntentInputDisposition 'hey'
 ```
+
+`Test-ShellIntentHost` should be `True` for the terminal you configured.
+`Get-ShellIntentInputDisposition 'hey'` should return `codex`.
 
 ## Warp Note
 

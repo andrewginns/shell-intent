@@ -720,3 +720,34 @@ Describe 'ShellIntent PSReadLine lifecycle' {
         }
     }
 }
+
+Describe 'ShellIntent Codex invocation' {
+    BeforeEach {
+        Remove-Module ShellIntent -ErrorAction SilentlyContinue
+        Import-Module $moduleManifestPath -Force
+    }
+
+    It 'prefers a sibling cmd shim over a PowerShell wrapper when resolving Codex' {
+        $testRoot = New-ShellIntentTestRoot
+
+        try {
+            $codexPs1Path = Join-Path $testRoot 'codex.ps1'
+            $codexCmdPath = Join-Path $testRoot 'codex.cmd'
+            Set-Content -LiteralPath $codexPs1Path -Value '# codex powershell shim'
+            Set-Content -LiteralPath $codexCmdPath -Value '@echo off'
+
+            $resolvedPath = & (Get-Module ShellIntent) {
+                param($path)
+                Resolve-ShellIntentCodexInvocation -ExecutableName $path
+            } $codexPs1Path
+
+            $resolvedPath | Should Be $codexCmdPath
+        } finally {
+            Remove-Module ShellIntent -ErrorAction SilentlyContinue
+
+            if (Test-Path -LiteralPath $testRoot) {
+                Remove-Item -LiteralPath $testRoot -Recurse -Force
+            }
+        }
+    }
+}

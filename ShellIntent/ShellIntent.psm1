@@ -376,6 +376,39 @@ function Get-ShellIntentCommandProviderName {
     return Get-ShellIntentProviderNameForPath -Path $pathArgument
 }
 
+function Resolve-ShellIntentCodexInvocation {
+    [CmdletBinding()]
+    param(
+        [string] $ExecutableName = $script:ShellIntentConfig.CodexExecutable
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExecutableName)) {
+        return $null
+    }
+
+    $commandInfo = Get-Command -Name $ExecutableName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $commandInfo) {
+        return $null
+    }
+
+    $commandPath = $commandInfo.Path
+    if (-not $commandPath) {
+        $commandPath = $commandInfo.Definition
+    }
+
+    if (
+        $commandPath -and
+        [System.IO.Path]::GetExtension($commandPath).Equals('.ps1', [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        $cmdShimPath = [System.IO.Path]::ChangeExtension($commandPath, '.cmd')
+        if (Test-Path -LiteralPath $cmdShimPath) {
+            return $cmdShimPath
+        }
+    }
+
+    return $commandPath
+}
+
 function Test-ShellIntentHasParameter {
     [CmdletBinding()]
     param(
@@ -762,8 +795,8 @@ function Invoke-ShellIntentQuery {
         return "Type a Codex query."
     }
 
-    $codexCommand = Get-Command -Name $script:ShellIntentConfig.CodexExecutable -ErrorAction SilentlyContinue
-    if (-not $codexCommand) {
+    $codexInvocation = Resolve-ShellIntentCodexInvocation -ExecutableName $script:ShellIntentConfig.CodexExecutable
+    if (-not $codexInvocation) {
         return "Codex executable '$($script:ShellIntentConfig.CodexExecutable)' was not found."
     }
 
@@ -797,7 +830,7 @@ $trimmedQuery
         '-'
     )
 
-    $null = $codexPrompt | & $script:ShellIntentConfig.CodexExecutable @codexArgs *> $null
+    $null = $codexPrompt | & $codexInvocation @codexArgs *> $null
     $exitCode = $LASTEXITCODE
 
     if (Test-Path -LiteralPath $outputPath) {

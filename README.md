@@ -10,68 +10,77 @@ It keeps normal PowerShell commands working as usual, but routes:
 
 to Codex for interpretation.
 
-The response format is optimized for terminal use:
+By default it:
 
-- brief explanation first
-- the final line is always one raw recommended PowerShell command
+- scopes activation to `warp.exe`
+- uses `?` as the force-to-Codex prefix
+- uses `gpt-5.3-codex-spark`
+- sets reasoning to `medium`
 
-## What It Solves
+## Example
 
-This gives you a "universal input" layer in PowerShell:
+```text
+PS> Get-ChildItem
+# runs directly in PowerShell
 
-- `Get-ChildItem` runs normally
-- `ls -la` gets translated by Codex
-- `list files in this folder` gets interpreted by Codex
-- `?winget grep notepad` forces Codex even if the input looks command-like
+PS> ls -la
+# routed through Codex and translated into PowerShell
 
-It works best in Warp, but it can be scoped to any terminal app by parent process name, or enabled for all PowerShell sessions.
+PS> list files in this folder
+# routed through Codex as natural language
 
-## Files
-
-- `ShellIntent/ShellIntent.psm1`
-- `ShellIntent/ShellIntent.psd1`
-- `install.ps1`
+PS> ?winget grep notepad
+# forced through Codex even though it looks command-like
+```
 
 ## Install
 
-Run the installer from the PowerShell environment you want to target.
+Open the terminal you want to use with ShellIntent, then run the matching commands there.
 
-### Warp on Windows PowerShell 5.1
+### Warp On Windows PowerShell 5.1
 
-Run this from a Warp PowerShell tab:
+Launch a Warp PowerShell tab and run:
 
 ```powershell
+git clone git@github.com:andrewginns/shell-intent.git
+cd shell-intent
 Set-ExecutionPolicy -Scope Process Bypass
 . .\install.ps1
 ```
 
-By default this will:
+### Windows Terminal On PowerShell 7
 
-- copy the module into your user module path
-- update the current host profile
-- scope activation to `warp.exe`
-- use `?` as the force-to-Codex prefix
-- use `gpt-5.3-codex-spark` with medium reasoning for the Codex bridge path
-
-### PowerShell 7
-
-Run the same installer from `pwsh`. It will target the PowerShell 7 user module path and PowerShell 7 current-host profile automatically.
-
-### Any Terminal Host
-
-Examples:
+Launch a Windows Terminal tab that uses `pwsh` and run:
 
 ```powershell
+git clone git@github.com:andrewginns/shell-intent.git
+cd shell-intent
 . .\install.ps1 -TerminalProcessNames @('WindowsTerminal.exe')
 ```
 
-```powershell
-. .\install.ps1 -TerminalProcessNames @('warp.exe', 'WindowsTerminal.exe')
-```
+### Windows Terminal On Windows PowerShell
+
+Launch a Windows Terminal tab that uses Windows PowerShell and run:
 
 ```powershell
+git clone git@github.com:andrewginns/shell-intent.git
+cd shell-intent
+Set-ExecutionPolicy -Scope Process Bypass
+. .\install.ps1 -TerminalProcessNames @('WindowsTerminal.exe')
+```
+
+### Plain powershell.exe Or pwsh
+
+If you want ShellIntent in any PowerShell session, launch your preferred shell and run:
+
+```powershell
+git clone git@github.com:andrewginns/shell-intent.git
+cd shell-intent
+Set-ExecutionPolicy -Scope Process Bypass
 . .\install.ps1 -AlwaysEnable
 ```
+
+If you downloaded the repository as a ZIP instead of cloning it, open the extracted folder in the target terminal and run the same final two commands from there.
 
 ## Manual Profile Setup
 
@@ -84,9 +93,7 @@ Enable-ShellIntent -TerminalProcessNames @('warp.exe') -ForcePrefix '?' -Model '
 
 ## Behavior
 
-### Normal commands
-
-These execute directly in PowerShell:
+### Runs Directly In PowerShell
 
 ```powershell
 Get-ChildItem
@@ -94,9 +101,7 @@ git status
 mkdir demo
 ```
 
-### Codex-translated commands
-
-These go through Codex:
+### Goes Through Codex
 
 ```text
 ls -la
@@ -105,37 +110,9 @@ list files in this folder
 ?winget grep notepad
 ```
 
-### Forced Codex prefix
+If the response contains alternatives, the final line is still one raw recommended PowerShell command.
 
-Any line starting with `?` bypasses the detector and goes straight to Codex.
-
-Examples:
-
-```text
-?ip a
-?why is git failing
-?winget grep notepad
-```
-
-If the response contains alternatives, the last line is still the primary raw command, for example:
-
-```text
-Closest PowerShell equivalent for `ip a` is `Get-NetIPConfiguration`.
-
-If you only want assigned IPs, use `Get-NetIPAddress`.
-
-Get-NetIPConfiguration
-```
-
-## Exported Functions
-
-- `Enable-ShellIntent`
-- `Disable-ShellIntent`
-- `Test-ShellIntentHost`
-- `Get-ShellIntentInputDisposition`
-- `Invoke-ShellIntentQuery`
-
-Useful checks:
+## Useful Checks
 
 ```powershell
 Test-ShellIntentHost
@@ -143,42 +120,6 @@ Get-ShellIntentInputDisposition 'ls -la'
 Invoke-ShellIntentQuery '?ip a'
 ```
 
-## Warp Compatibility Note
+## Warp Note
 
-Warp injects its own PowerShell helper script. On older PSReadLine builds, Warp can call unsupported `Set-PSReadLineOption` parameters during prompt redraw. The module includes a compatibility shim for Warp so the bridge can run without tripping that error path.
-
-## Publishing
-
-### GitHub
-
-1. Put these files in a repository, for example `shell-intent`.
-2. Tag releases.
-3. Tell users to clone or download the repo and run `install.ps1`.
-
-### PowerShell Gallery
-
-1. Update the metadata in the module manifest.
-2. Version the module properly.
-3. Publish with:
-
-```powershell
-Publish-Module -Path .\ShellIntent -NuGetApiKey <your-key>
-```
-
-Then users can install with:
-
-```powershell
-Install-Module ShellIntent
-```
-
-and add the profile line manually.
-
-## Suggested Packaging Strategy
-
-If you want this to be broadly reusable, ship it in three layers:
-
-1. PowerShell module: the real functionality
-2. installer script: the easy path for end users
-3. README + examples: host-specific setup for Warp, Windows Terminal, plain `powershell.exe`, and `pwsh`
-
-That keeps the bridge logic testable and lets users adopt it without editing a long profile by hand.
+Warp injects its own PowerShell helper script. On older PSReadLine builds, Warp can call unsupported `Set-PSReadLineOption` parameters during prompt redraw. The module includes a compatibility shim so the bridge can run without tripping that error path.

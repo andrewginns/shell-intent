@@ -1,4 +1,4 @@
-﻿# ShellIntent
+# ShellIntent
 
 `ShellIntent` is a PowerShell module that sends terminal input through Codex before execution.
 
@@ -152,9 +152,8 @@ Warp injects its own PowerShell helper script. On older PSReadLine builds, Warp 
 ### GitHub
 
 1. Put these files in a repository, for example `shell-intent`.
-2. Replace the placeholder `ProjectUri` in the module manifest.
-3. Tag releases.
-4. Tell users to clone or download the repo and run `install.ps1`.
+2. Tag releases.
+3. Tell users to clone or download the repo and run `install.ps1`.
 
 ### PowerShell Gallery
 
@@ -183,4 +182,3 @@ If you want this to be broadly reusable, ship it in three layers:
 3. README + examples: host-specific setup for Warp, Windows Terminal, plain `powershell.exe`, and `pwsh`
 
 That keeps the bridge logic testable and lets users adopt it without editing a long profile by hand.
-

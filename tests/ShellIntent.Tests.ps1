@@ -199,6 +199,15 @@ Describe 'ShellIntent input routing' {
         (Get-ShellIntentInputDisposition 'git diff && git status') | Should Be $expectedDisposition
         (Get-ShellIntentInputDisposition 'git diff || git status') | Should Be $expectedDisposition
     }
+
+    It 'does not treat && inside quoted strings as bash operators' {
+        foreach ($line in @(
+            'Write-Host "a && b"',
+            'ssh host "chmod 700 ~/.ssh && chmod 600 ~/.ssh/id"'
+        )) {
+            (Get-ShellIntentInputDisposition $line) | Should Be 'accept'
+        }
+    }
 }
 
 Describe 'install.ps1 profile updates' {

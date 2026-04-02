@@ -697,7 +697,9 @@ function Test-ShellIntentBashLikeInput {
         [AllowEmptyString()]
         [string] $Line,
 
-        [System.Management.Automation.Language.CommandAst] $CommandAst
+        [System.Management.Automation.Language.CommandAst] $CommandAst,
+
+        [System.Management.Automation.Language.Token[]] $Tokens = @()
     )
 
     $trimmedLine = $Line.Trim()
@@ -705,8 +707,17 @@ function Test-ShellIntentBashLikeInput {
         return $false
     }
 
-    if ($PSVersionTable.PSVersion.Major -lt 7 -and $trimmedLine -match '(^|\s)(?:&&|\|\|)(\s|$)') {
-        return $true
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        if ($Tokens -and (
+            $Tokens.Kind -contains [System.Management.Automation.Language.TokenKind]::AndAnd -or
+            $Tokens.Kind -contains [System.Management.Automation.Language.TokenKind]::OrOr
+        )) {
+            return $true
+        }
+
+        if (-not $Tokens -and $trimmedLine -match '(^|\s)(?:&&|\|\|)(\s|$)') {
+            return $true
+        }
     }
 
     if ($trimmedLine -match '^\s*(?:export|source|unset|alias|unalias|sudo)\b') {
@@ -874,7 +885,7 @@ function Get-ShellIntentInputDisposition {
         return 'codex'
     }
 
-    if (Test-ShellIntentBashLikeInput -Line $Line -CommandAst $commandAst) {
+    if (Test-ShellIntentBashLikeInput -Line $Line -CommandAst $commandAst -Tokens $tokens) {
         return 'codex'
     }
 
